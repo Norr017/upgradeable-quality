@@ -1,0 +1,182 @@
+require("util")
+local filter = { { filter = "type", type = "ammo-turret" },
+	{ filter = "type", type = "assembling-machine" },
+	{ filter = "type", type = "furnace" },
+	{ filter = "type", type = "lab" },
+	{ filter = "type", type = "mining-drill" } }
+local base_time = settings.startup["base_time_to_level_up"].value
+local multiplier= settings.startup["multiplier_time_to_level_up"].value
+local is_update_module = settings.startup["randomly_upgrade_inside_module"].value
+local base_time_module = settings.startup["time_to_randomly_levelup_inside_module"].value
+script.on_init(function()
+	get_built_machine()
+end)
+
+script.on_configuration_changed(function()
+
+end)
+script.on_load(function()
+
+end)
+quality_table = nil
+script.on_nth_tick(60, function(event)
+	local upgrade_machine_list = {}
+	local upgrade_module_list = {}
+	for _, ent in pairs(storage.built_machine) do
+		if ent.entity.quality.next ~= nil then
+			if ent.level_time < base_time  * multiplier ^ ent.entity.quality.next.level then
+				if ent.entity.status == defines.entity_status.working then
+					ent.level_time = ent.level_time + 1
+				end
+			else
+				table.insert(upgrade_machine_list, ent)
+				ent.level_time = 0
+			end
+		end
+		if ent.level_time > base_time_module and is_update_module then
+			table.insert(upgrade_module_list, ent)
+		end
+	end
+	for _, v in pairs(upgrade_machine_list) do
+		upgrade_machines(v)
+	end
+	for _, v in pairs(upgrade_module_list) do
+		upgrade_module(v)
+	end
+end)
+
+function upgrade_machines(ent)
+	local new_eneity = ent.entity.surface.create_entity {
+		name = ent.entity.name,
+		position = ent.entity.position,
+		direction = ent.entity.direction,
+		quality = ent.entity.quality.next or ent.entity.quality,
+		force = ent.entity.force
+	}
+	if ent.entity.type == "assembling-machine" then
+		if ent.entity.get_recipe() then
+			new_eneity.set_recipe(ent.entity.get_recipe())
+		end
+	end
+	
+	if ent.entity.get_module_inventory() then
+		replace_inventory(new_eneity.get_module_inventory(), ent.entity.get_module_inventory())
+	end
+	if ent.entity.get_output_inventory() then
+		replace_inventory(new_eneity.get_output_inventory(), ent.entity.get_output_inventory())
+	end
+	if ent.entity.type == "assembling-machine" then
+		replace_inventory(new_eneity.get_inventory(defines.inventory.assembling_machine_input),
+			ent.entity.get_inventory(defines.inventory.assembling_machine_input))
+	elseif ent.entity.type == "furnace" then
+		replace_inventory(new_eneity.get_inventory(defines.inventory.furnace_source),
+			ent.entity.get_inventory(defines.inventory.furnace_source))
+	end
+	if ent.entity.get_fuel_inventory() then
+		replace_inventory(new_eneity.get_fuel_inventory(), ent.entity.get_fuel_inventory())
+	end
+	if ent.entity.get_burnt_result_inventory() then
+		replace_inventory(new_eneity.get_burnt_result_inventory(), ent.entity.get_burnt_result_inventory())
+	end
+
+	ent.entity.destroy()
+	storage.built_machine[ent.unit_number] = nil
+	Add_storage(new_eneity)
+end
+
+function replace_inventory(inventory, contents)
+	if inventory == nil or not inventory.is_empty() then
+		return
+	end
+	local con = contents.get_contents()
+	for _, item in pairs(con) do
+		inventory.insert(item)
+	end
+end
+
+function upgrade_module(ent)
+	if not ent.entity.get_module_inventory() then return end
+	local inv = ent.entity.get_module_inventory()
+	if not inv then return end
+	local content = inv.get_contents()
+	if not content then return end
+	local content1 = span_c(content)
+	inv.clear()
+	local upgrade = true
+	for _, v in pairs(content1) do
+		if prototypes.quality[v.quality].next and upgrade then
+			upgrade = false
+			inv.insert { name = v.name, quality = prototypes.quality[v.quality].next.name, count = v.count }
+			storage.built_machine[ent.unit_number].level_time = 0
+		else
+			inv.insert { name = v.name, quality = v.quality, count = v.count }
+		end
+	end
+end
+
+function span_c(content)
+	local spac_content = {}
+	for _, v in pairs(content) do
+		for i = 1, v.count do
+			table.insert(spac_content, { name = v.name, quality = v.quality, count = 1 })
+		end
+	end
+	return spac_content
+end
+
+function get_built_machine()
+	storage.built_machine = storage.built_machine or {}
+	if next(storage.built_machine) ~= nil then
+		for unit_number, machine in pairs(storage.built_machines) do
+			if not machine.entity or not machine.entity.valid then
+				storage.built_machines[unit_number] = nil
+			end
+		end
+	end
+
+	for _, surface in pairs(game.surfaces) do
+		local entities = surface.find_entities_filtered { type = { "ammo-turret", "assembling-machine", "furnace", "lab", "mining-drill" } }
+		for _, v in pairs(entities) do
+			Add_storage(v)
+		end
+	end
+end
+
+function On_built_entity(event)
+	if not event.entity then return end
+	Add_storage(event.entity)
+end
+
+function On_mined_entity(event)
+	if not event.entity then return end
+	if not storage.built_machine[event.entity.unit_number] then return end
+	storage.built_machine[event.entity.unit_number] = nil
+end
+
+function Add_storage(v)
+	if storage.built_machine[v.unit_number] then return end
+	storage.built_machine[v.unit_number] = {
+		unit_number = v.unit_number,
+		entity = v,
+		level_time = 0
+	}
+end
+
+script.on_event(
+	defines.events.on_player_mined_entity,
+	On_mined_entity,
+	filter
+)
+script.on_event(
+	defines.events.on_robot_mined_entity,
+	On_mined_entity,
+	filter)
+script.on_event(
+	defines.events.on_robot_built_entity,
+	On_built_entity,
+	filter)
+
+script.on_event(
+	defines.events.on_built_entity,
+	On_built_entity,
+	filter)

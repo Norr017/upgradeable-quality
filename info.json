@@ -1,0 +1,14 @@
+{
+  "name": "upgradeable-quality",
+  "title": "Upgradeable Quality",
+  "version": "0.0.1",
+  "author": "nor017",
+  "homepage": "",
+  "description": "building gets quality up through time",
+  "factorio_version": "2.0",
+  "dependencies": [
+    "base >= 2.0",
+    "quality >= 2.0.0"
+  ],
+  "quality_required": true
+}
