@@ -86,10 +86,6 @@ function upgrade_machines(ent)
 			new_eneity.set_recipe(ent.entity.get_recipe())
 		end
 	end
-
-	new_eneity.mirroring = ent.entity.mirroring
-	new_eneity.orientation = ent.entity.orientation
-
 	if ent.entity.get_module_inventory() then
 		replace_inventory(new_eneity.get_module_inventory(), ent.entity.get_module_inventory())
 	end
@@ -109,7 +105,9 @@ function upgrade_machines(ent)
 	if ent.entity.get_burnt_result_inventory() then
 		replace_inventory(new_eneity.get_burnt_result_inventory(), ent.entity.get_burnt_result_inventory())
 	end
-
+	new_eneity.mirroring = ent.entity.mirroring
+	new_eneity.direction = ent.entity.direction
+	new_eneity.orientation = ent.entity.orientation
 	ent.entity.destroy()
 	storage.built_machine[ent.unit_number] = nil
 	Add_storage(new_eneity)
