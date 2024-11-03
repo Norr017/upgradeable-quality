@@ -42,6 +42,7 @@ local machine_order = {}                -- Stores the randomized order of machin
 local max_per_tick = 50                 -- Max items to process per tick
 
 script.on_init(function()
+	get_built_machine()
 	for _, player in pairs(game.players) do
 		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
 	end
