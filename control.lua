@@ -232,15 +232,15 @@ function On_select_changed(event)
 
 		-- Check if there is a last entity and if it matches the filter
 		local matches_filter = false
-		if event.last_entity then
-			for _, condition in ipairs(filter) do
-				if event.last_entity.type == condition.type then
-					matches_filter = true
-					break
-				end
+		-- if event.last_entity then
+		for _, condition in ipairs(filter) do
+			if event.last_entity.type == condition.type then
+				matches_filter = true
+				break
 			end
 		end
-
+		-- end
+		if not matches_filter then return end
 		-- If technology is researched and entity matches filter, show or update the GUI
 		local ent_name = event.last_entity.name  -- Store the raw entity name
 		if not existing_gui then
