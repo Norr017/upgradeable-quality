@@ -1,11 +1,31 @@
 require("util")
+require("mod-gui")
 local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "assembling-machine" },
 	{ filter = "type", type = "furnace" },
 	{ filter = "type", type = "lab" },
-	{ filter = "type", type = "mining-drill" } }
---local base_time = settings.startup["base_time_to_level_up"].value
-local base_time = 2
+	{ filter = "type", type = "mining-drill" },
+	{ filter = "type", type = "boiler" },
+	{ filter = "type", type = "generator" },
+	{ filter = "type", type = "solar-panel" },
+	{ filter = "type", type = "accumulator" },
+	{ filter = "type", type = "reactor" },
+	{ filter = "type", type = "beacon" }
+}
+if script.active_mods["space-age"] then
+	table.insert(filter, { filter = "type", type = "asteroid-collector" })
+end
+
+local s_filter = get_lite_filter(filter)
+function get_lite_filter(input)
+	local temp_filter = {}
+	for _,v in pairs(input) do
+		table.insert(temp_filter,v.type)
+	end
+	return temp_filter
+end
+
+local base_time = settings.startup["base_time_to_level_up"].value
 local multiplier = settings.startup["multiplier_time_to_level_up"].value
 local is_update_module = settings.startup["randomly_upgrade_inside_module"].value
 local base_time_module = settings.startup["time_to_randomly_levelup_inside_module"].value
@@ -143,7 +163,7 @@ function get_built_machine()
 	end
 
 	for _, surface in pairs(game.surfaces) do
-		local entities = surface.find_entities_filtered { type = { "ammo-turret", "assembling-machine", "furnace", "lab", "mining-drill" } }
+		local entities = surface.find_entities_filtered { type = s_filter }
 		for _, v in pairs(entities) do
 			Add_storage(v)
 		end
