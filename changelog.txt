@@ -3,3 +3,10 @@ Version: 0.0.1
 Date: 2024-10-30
   Bugfix:
     - hello world
+---------------------------------------------------------------------------------------------------
+Version: 0.0.4
+Date: 2024-11-3
+  Bugfix:
+    - fix crash when machine is destoy
+    - fix rotate and mirror problem
+    - add respect tech, when technology is not researched, upgrade will not apply

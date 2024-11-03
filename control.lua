@@ -4,10 +4,13 @@ local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "furnace" },
 	{ filter = "type", type = "lab" },
 	{ filter = "type", type = "mining-drill" } }
-local base_time = settings.startup["base_time_to_level_up"].value
-local multiplier= settings.startup["multiplier_time_to_level_up"].value
+--local base_time = settings.startup["base_time_to_level_up"].value
+local base_time = 2
+local multiplier = settings.startup["multiplier_time_to_level_up"].value
 local is_update_module = settings.startup["randomly_upgrade_inside_module"].value
 local base_time_module = settings.startup["time_to_randomly_levelup_inside_module"].value
+local respect_technology = settings.startup["respect_technology"].value
+local quality_tech = {}
 script.on_init(function()
 	get_built_machine()
 end)
@@ -16,15 +19,21 @@ script.on_configuration_changed(function()
 
 end)
 script.on_load(function()
-
+	quality_tech = check_quality_unlock_tech()
 end)
-quality_table = nil
 script.on_nth_tick(60, function(event)
 	local upgrade_machine_list = {}
 	local upgrade_module_list = {}
 	for _, ent in pairs(storage.built_machine) do
-		if ent.entity.quality.next ~= nil then
-			if ent.level_time < base_time  * multiplier ^ ent.entity.quality.next.level then
+		while true do
+			if not ent.entity.valid then
+				storage.built_machine[ent.unit_number] = nil
+				break
+			end
+			local next_tech = ent.entity.quality.next
+			if not next_tech then break end
+			if not check_quality_unlock(next_tech) and respect_technology then break end
+			if ent.level_time < base_time * multiplier ^ next_tech.level then
 				if ent.entity.status == defines.entity_status.working then
 					ent.level_time = ent.level_time + 1
 				end
@@ -32,9 +41,10 @@ script.on_nth_tick(60, function(event)
 				table.insert(upgrade_machine_list, ent)
 				ent.level_time = 0
 			end
-		end
-		if ent.level_time > base_time_module and is_update_module then
-			table.insert(upgrade_module_list, ent)
+			if ent.level_time > base_time_module and is_update_module then
+				table.insert(upgrade_module_list, ent)
+			end
+			break
 		end
 	end
 	for _, v in pairs(upgrade_machine_list) do
@@ -44,8 +54,26 @@ script.on_nth_tick(60, function(event)
 		upgrade_module(v)
 	end
 end)
+function check_quality_unlock_tech()
+	local q_t = {}
+	for k, v in pairs(prototypes.technology) do
+		for k1, v1 in pairs(v.effects) do
+			if v1["type"] == "unlock-quality" then
+				q_t[v1["quality"]] = k
+			end
+		end
+	end
+	return q_t
+end
+
+function check_quality_unlock(tech)
+	local name = tech.name
+	local tech_name = quality_tech[name]
+	return game.forces["player"].technologies[tech_name].researched
+end
 
 function upgrade_machines(ent)
+	if not ent.entity.quality.next then return end
 	local new_eneity = ent.entity.surface.create_entity {
 		name = ent.entity.name,
 		position = ent.entity.position,
@@ -58,7 +86,10 @@ function upgrade_machines(ent)
 			new_eneity.set_recipe(ent.entity.get_recipe())
 		end
 	end
-	
+
+	new_eneity.mirroring = ent.entity.mirroring
+	new_eneity.orientation = ent.entity.orientation
+
 	if ent.entity.get_module_inventory() then
 		replace_inventory(new_eneity.get_module_inventory(), ent.entity.get_module_inventory())
 	end
@@ -169,6 +200,10 @@ script.on_event(
 )
 script.on_event(
 	defines.events.on_robot_mined_entity,
+	On_mined_entity,
+	filter)
+script.on_event(
+	defines.events.on_post_entity_died,
 	On_mined_entity,
 	filter)
 script.on_event(

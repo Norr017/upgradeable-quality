@@ -8,7 +8,7 @@ data:extend({
         maximum_value = 99999,
     },
     {
-        type = "int-setting",
+        type = "double-setting",
         name = "multiplier_time_to_level_up",
         setting_type = "startup",
         default_value = 1,
@@ -28,5 +28,11 @@ data:extend({
         default_value = 3600,
         minimum_value = 1,
         maximum_value = 99999,
+    },
+    {
+        type = "bool-setting",
+        name = "respect_technology",
+        setting_type = "startup",
+        default_value = true
     },
 })
