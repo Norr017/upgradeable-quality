@@ -22,3 +22,10 @@ Date: 2024-11-3
   Bugfix:
     - add a small gui to show the current machine exp
     - fix accumulator exp gain,only when is full charge
+---------------------------------------------------------------------------------------------------
+Version: 0.0.8
+Date: 2024-11-4
+  Bugfix:
+    - make the gui can toggle off
+    - add space-age asteroid-collector can upgrade
+    - now machine upgrade can mantain all is setting include circuit and wire(should be)
