@@ -105,57 +105,16 @@ function upgrade_machines(ent)
 		position = ent.entity.position,
 		direction = ent.entity.direction,
 		quality = ent.entity.quality.next or ent.entity.quality,
-		force = ent.entity.force
+		force = ent.entity.force,
+		fast_replace = true
 	}
-	if ent.entity.type == "assembling-machine" then
-		if ent.entity.get_recipe() then
-			new_eneity.set_recipe(ent.entity.get_recipe())
+	local temp_ent = new_eneity.surface.find_entities(new_eneity.bounding_box)
+	for _, v in pairs(temp_ent) do
+		if v.type == "item-entity" then
+			v.destroy()
 		end
 	end
 
-	new_eneity.mirroring = ent.entity.mirroring
-	new_eneity.orientation = ent.entity.orientation
-	if ent.entity.temperature then
-		new_eneity.temperature = ent.entity.temperature
-	end
-	if ent.entity.energy then
-		new_eneity.energy = ent.entity.energy
-	end
-	local origin_wire = ent.entity.get_wire_connector(defines.wire_connector_id.circuit_green, false)
-	if origin_wire then
-		local wire = new_eneity.get_wire_connector(defines.wire_connector_id.circuit_green, true)
-		for _, v in pairs(origin_wire.real_connections) do
-			wire.connect_to(v.target)
-		end
-	end
-	origin_wire = ent.entity.get_wire_connector(defines.wire_connector_id.circuit_red, false)
-	if origin_wire then
-		local wire = new_eneity.get_wire_connector(defines.wire_connector_id.circuit_red, true)
-		for _, v in pairs(origin_wire.real_connections) do
-			wire.connect_to(v.target)
-		end
-	end
-	if ent.entity.get_module_inventory() then
-		replace_inventory(new_eneity.get_module_inventory(), ent.entity.get_module_inventory())
-	end
-	if ent.entity.get_output_inventory() then
-		replace_inventory(new_eneity.get_output_inventory(), ent.entity.get_output_inventory())
-	end
-	if ent.entity.type == "assembling-machine" then
-		replace_inventory(new_eneity.get_inventory(defines.inventory.assembling_machine_input),
-			ent.entity.get_inventory(defines.inventory.assembling_machine_input))
-	elseif ent.entity.type == "furnace" then
-		replace_inventory(new_eneity.get_inventory(defines.inventory.furnace_source),
-			ent.entity.get_inventory(defines.inventory.furnace_source))
-	end
-	if ent.entity.get_fuel_inventory() then
-		replace_inventory(new_eneity.get_fuel_inventory(), ent.entity.get_fuel_inventory())
-	end
-	if ent.entity.get_burnt_result_inventory() then
-		replace_inventory(new_eneity.get_burnt_result_inventory(), ent.entity.get_burnt_result_inventory())
-	end
-
-	ent.entity.destroy()
 	storage.built_machine[ent.unit_number] = nil
 	Add_storage(new_eneity)
 end
