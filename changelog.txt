@@ -10,3 +10,15 @@ Date: 2024-11-3
     - fix crash when machine is destoy
     - fix rotate and mirror problem
     - add respect tech, when technology is not researched, upgrade will not apply
+---------------------------------------------------------------------------------------------------
+Version: 0.0.5
+Date: 2024-11-3
+  Bugfix:
+    - add solar reactor accumulator boiler generator to upgrade
+    - fix wire lost when upgrade
+---------------------------------------------------------------------------------------------------
+Version: 0.0.6
+Date: 2024-11-3
+  Bugfix:
+    - add a small gui to show the current machine exp
+    - fix accumulator exp gain,only when is full charge
