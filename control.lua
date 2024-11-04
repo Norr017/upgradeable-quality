@@ -42,7 +42,6 @@ local machine_order = {}                -- Stores the randomized order of machin
 local max_per_tick = 50                 -- Max items to process per tick
 
 script.on_init(function()
-	get_built_machine()
 	for _, player in pairs(game.players) do
 		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
 	end
@@ -54,14 +53,6 @@ script.on_event(defines.events.on_player_created, function(event)
 	player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
 end)
 
-script.on_configuration_changed(function()
-
-end)
-script.on_load(function()
-	quality_tech = check_quality_unlock_tech()
-end)
-
-
 script.on_nth_tick(6, function(event)
     -- Ensure GUI toggle for all players
     for _, player in pairs(game.players) do
@@ -71,6 +62,7 @@ script.on_nth_tick(6, function(event)
     -- First run initialization
     if first_search then
         get_built_machine()
+		quality_tech = check_quality_unlock_tech()
         first_search = false
         refresh_machine_order()
     end
@@ -199,16 +191,6 @@ function upgrade_machines(ent)
 	Add_storage(new_eneity)
 end
 
-function replace_inventory(inventory, contents)
-	if inventory == nil or not inventory.is_empty() then
-		return
-	end
-	local con = contents.get_contents()
-	for _, item in pairs(con) do
-		inventory.insert(item)
-	end
-end
-
 function upgrade_module(ent)
 	if not ent.entity.get_module_inventory() then return end
 	local inv = ent.entity.get_module_inventory()
@@ -246,14 +228,6 @@ function get_built_machine()
 		local entities = surface.find_entities_filtered { type = s_filter }
 		for _, v in pairs(entities) do
 			Add_storage(v)
-		end
-	end
-
-	if next(storage.built_machine) ~= nil then
-		for unit_number, machine in pairs(storage.built_machine) do
-			if not machine.entity or not machine.entity.valid then
-				storage.built_machine[unit_number] = nil
-			end
 		end
 	end
 end
