@@ -1,5 +1,5 @@
 require("util")
-require("mod-gui")
+
 local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "assembling-machine" },
 	{ filter = "type", type = "furnace" },
@@ -104,10 +104,10 @@ script.on_nth_tick(6, function(event)
 				break
 			end
 			if not check_quality_unlock(next_tech) and respect_technology then break end
-			if not next_tech and not have_upgradeable_module then break end -- check if upgradeable
+			if not next_tech and not have_upgradeable_module then break end         -- check if upgradeable
 			if ent.level_time < base_time * multiplier ^ (ent.entity.quality.level + 1) then -- Upgrade check based on level time and base time
 				--if ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged then
-					ent.level_time = ent.level_time + sec_passed
+				ent.level_time = ent.level_time + sec_passed
 				--end
 			else
 				table.insert(upgrade_machine_list, ent)
@@ -301,18 +301,18 @@ function On_select_changed(event)
 		-- end
 		if not matches_filter then return end
 		-- If technology is researched and entity matches filter, show or update the GUI
-		local ent_name =event.last_entity.name -- Store the raw entity name
+		local ent_name = event.last_entity.name -- Store the raw entity name
 		if not existing_gui then
 			existing_gui = gui_container.add({
 				type = "frame",
 				name = "machine-exp",
-				caption = {"",{"entity-name." .. ent_name}," EXP"}, -- Getting the localized name
+				caption = { "", { "entity-name." .. ent_name }, " EXP" }, -- Getting the localized name
 				direction = "vertical",
 			})
-			existing_gui.style.maximal_width  = 250
+			existing_gui.style.maximal_width = 250
 			storage.gui = existing_gui.add({ type = "label", name = "exp-num", caption = "none" })
 		else
-			existing_gui.caption = {"",{"entity-name." .. ent_name}," EXP"}
+			existing_gui.caption = { "", { "entity-name." .. ent_name }, " EXP" }
 		end
 
 		-- Update the GUI with EXP information if available
