@@ -37,9 +37,9 @@ local quality_tech = {}
 local active_gui = false
 local first_search = true
 
-local processed_machine_index = 1       -- Tracks the current position in the randomized list
-local machine_order = {}                -- Stores the randomized order of machines to process
-local max_per_tick = 50                 -- Max items to process per tick
+local processed_machine_index = 1 -- Tracks the current position in the randomized list
+local machine_order = {}          -- Stores the randomized order of machines to process
+local max_per_tick = 50           -- Max items to process per tick
 
 script.on_init(function()
 	for _, player in pairs(game.players) do
@@ -54,100 +54,118 @@ script.on_event(defines.events.on_player_created, function(event)
 end)
 
 script.on_nth_tick(6, function(event)
-    -- Ensure GUI toggle for all players
-    for _, player in pairs(game.players) do
-        player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
-    end
+	-- Ensure GUI toggle for all players
+	for _, player in pairs(game.players) do
+		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
+	end
 
-    -- First run initialization
-    if first_search then
-        get_built_machine()
+	-- First run initialization
+	if first_search then
+		get_built_machine()
 		quality_tech = check_quality_unlock_tech()
-        first_search = false
-        refresh_machine_order()
-    end
+		first_search = false
+		refresh_machine_order()
+	end
 
-    -- If we reach the end of the machine list, refresh it to randomize the order again
-    if processed_machine_index > #machine_order then
-        processed_machine_index = 1
-        refresh_machine_order()
-    end
+	-- If we reach the end of the machine list, refresh it to randomize the order again
+	if processed_machine_index > #machine_order then
+		processed_machine_index = 1
+		refresh_machine_order()
+	end
 
-    -- Initialize lists for upgrades within the tick
-    local upgrade_machine_list = {}
-    local upgrade_module_list = {}
+	-- Initialize lists for upgrades within the tick
+	local upgrade_machine_list = {}
+	local upgrade_module_list = {}
 
-    -- Process up to `max_per_tick` items in each tick
-    local count = 0
-    while count < max_per_tick and processed_machine_index <= #machine_order do
-        local ent = machine_order[processed_machine_index]
-        processed_machine_index = processed_machine_index + 1
-        count = count + 1
+	-- Process up to `max_per_tick` items in each tick
+	local count = 0
+	while count < max_per_tick and processed_machine_index <= #machine_order do
+		local ent = machine_order[processed_machine_index]
+		processed_machine_index = processed_machine_index + 1
+		count = count + 1
 
 		local ticks_elapsed = game.tick - ent.last_tick
 		ent.last_tick = game.tick
 
 		local sec_passed = ticks_elapsed / 60
 
-        -- Main logic for machine processing
-        while true do
-            if not ent.entity.valid then
-                storage.built_machine[ent.unit_number] = nil  -- Remove invalid entity
-                break
-            end
+		-- Main logic for machine processing
+		while true do
+			if not ent.entity.valid then
+				storage.built_machine[ent.unit_number] = nil -- Remove invalid entity
+				break
+			end
 
-            local next_tech = ent.entity.quality.next
-            if not next_tech then break end
-            if not check_quality_unlock(next_tech) and respect_technology then break end
+			local next_tech = ent.entity.quality.next
+			local module_count = ent.entity.get_module_inventory()
+			local have_upgradeable_module = can_upgrade_module(ent.entity)
+			if not next_tech and not module_count then
+				storage.built_machine[ent.unit_number] = nil -- Remove fully upgraded entity
+				break
+			end
+			if not check_quality_unlock(next_tech) and respect_technology then break end
+			if not next_tech and not have_upgradeable_module then break end -- check if upgradeable
+			if ent.level_time < base_time * multiplier ^ (ent.entity.quality.level + 1) then -- Upgrade check based on level time and base time
+				--if ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged then
+					ent.level_time = ent.level_time + sec_passed
+				--end
+			else
+				table.insert(upgrade_machine_list, ent)
+				ent.level_time = 0
+			end
 
-            -- Upgrade check based on level time and base time
-            if ent.level_time < base_time * multiplier ^ next_tech.level then
-                if (ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged) and ent.level_time < 9999999 then
-                    ent.level_time = ent.level_time + sec_passed
-                end
-            else
-                table.insert(upgrade_machine_list, ent)
-                ent.level_time = 0
-            end
+			-- Module update check
+			if ent.level_time > base_time_module and is_update_module and have_upgradeable_module then
+				table.insert(upgrade_module_list, ent)
+			end
+			break
+		end
+	end
 
-            -- Module update check
-            if ent.level_time > base_time_module and is_update_module then
-                table.insert(upgrade_module_list, ent)
-            end
-            break
-        end
-    end
-
-    -- Perform upgrades based on lists created
-    for _, v in pairs(upgrade_machine_list) do
-        upgrade_machines(v)
-    end
-    for _, v in pairs(upgrade_module_list) do
-        upgrade_module(v)
-    end
+	-- Perform upgrades based on lists created
+	for _, v in pairs(upgrade_machine_list) do
+		upgrade_machines(v)
+	end
+	for _, v in pairs(upgrade_module_list) do
+		upgrade_module(v)
+	end
 end)
 
 -- Function to shuffle the table of machines for randomized order
 function shuffle_table(tbl)
-    local n = #tbl
-    for i = 1, n do
-        local j = math.random(i, n)
-        tbl[i], tbl[j] = tbl[j], tbl[i]
-    end
+	local n = #tbl
+	for i = 1, n do
+		local j = math.random(i, n)
+		tbl[i], tbl[j] = tbl[j], tbl[i]
+	end
 end
+
 -- Function to update the machine order list (shuffles only if it needs a new iteration)
 function refresh_machine_order()
-    machine_order = {}
-    for unit_number, ent in pairs(storage.built_machine) do
-        if ent.entity and ent.entity.valid then
-            -- Initialize last_tick if it does not exist
-            if not ent.last_tick then
-                ent.last_tick = game.tick  -- Set to the current tick on first encounter
-            end
-            table.insert(machine_order, ent)
-        end
-    end
-    shuffle_table(machine_order) -- Shuffle once to randomize the processing order
+	machine_order = {}
+	for unit_number, ent in pairs(storage.built_machine) do
+		if ent.entity and ent.entity.valid then
+			-- Initialize last_tick if it does not exist
+			if not ent.last_tick then
+				ent.last_tick = game.tick -- Set to the current tick on first encounter
+			end
+			table.insert(machine_order, ent)
+		else
+			storage.built_machine[ent.unit_number] = nil
+		end
+	end
+	shuffle_table(machine_order) -- Shuffle once to randomize the processing order
+end
+
+function can_upgrade_module(ent)
+	local module_inv = ent.get_module_inventory()
+	if not module_inv then return false end
+	local contents = module_inv.get_contents()
+	if not contents or contents == {} then return false end
+	for _, v in pairs(contents) do
+		if prototypes.quality[v.quality].next then return true end
+	end
+	return false
 end
 
 function check_quality_unlock_tech()
@@ -163,10 +181,10 @@ function check_quality_unlock_tech()
 end
 
 function check_quality_unlock(tech)
+	if not tech then return true end
 	local name = tech.name
-	if name == nil then return false end
 	local tech_name = quality_tech[name]
-	if tech_name == nil then return false end
+	if tech_name == nil then return true end
 	return game.forces["player"].technologies[tech_name].researched
 end
 
@@ -223,7 +241,7 @@ end
 
 function get_built_machine()
 	storage.built_machine = storage.built_machine or {}
-	
+
 	for _, surface in pairs(game.surfaces) do
 		local entities = surface.find_entities_filtered { type = s_filter }
 		for _, v in pairs(entities) do
@@ -283,17 +301,18 @@ function On_select_changed(event)
 		-- end
 		if not matches_filter then return end
 		-- If technology is researched and entity matches filter, show or update the GUI
-		local ent_name = event.last_entity.name -- Store the raw entity name
+		local ent_name =event.last_entity.name -- Store the raw entity name
 		if not existing_gui then
 			existing_gui = gui_container.add({
 				type = "frame",
 				name = "machine-exp",
-				caption = ent_name .. " EXP", -- Getting the localized name
-				direction = "vertical"
+				caption = {"",{"entity-name." .. ent_name}," EXP"}, -- Getting the localized name
+				direction = "vertical",
 			})
+			existing_gui.style.maximal_width  = 250
 			storage.gui = existing_gui.add({ type = "label", name = "exp-num", caption = "none" })
 		else
-			existing_gui.caption = ent_name .. " EXP"
+			existing_gui.caption = {"",{"entity-name." .. ent_name}," EXP"}
 		end
 
 		-- Update the GUI with EXP information if available
