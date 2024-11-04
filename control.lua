@@ -17,14 +17,16 @@ if script.active_mods["space-age"] then
 	table.insert(filter, { filter = "type", type = "asteroid-collector" })
 end
 
-local s_filter = get_lite_filter(filter)
-function get_lite_filter(input)
+
+function get_lite_filter()
 	local temp_filter = {}
-	for _,v in pairs(input) do
-		table.insert(temp_filter,v.type)
+	for _, v in pairs(filter) do
+		table.insert(temp_filter, v.type)
 	end
 	return temp_filter
 end
+
+local s_filter = get_lite_filter()
 
 local base_time = settings.startup["base_time_to_level_up"].value
 local multiplier = settings.startup["multiplier_time_to_level_up"].value
@@ -33,19 +35,23 @@ local base_time_module = settings.startup["time_to_randomly_levelup_inside_modul
 local respect_technology = settings.startup["respect_technology"].value
 local quality_tech = {}
 local active_gui = false
+local first_search = true
+
+local processed_machine_index = 1       -- Tracks the current position in the randomized list
+local machine_order = {}                -- Stores the randomized order of machines to process
+local max_per_tick = 50                 -- Max items to process per tick
 
 script.on_init(function()
 	get_built_machine()
-	
-    for _, player in pairs(game.players) do
-        player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
-    end
+	for _, player in pairs(game.players) do
+		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
+	end
 end)
 
 script.on_event(defines.events.on_player_created, function(event)
-    local player = game.players[event.player_index]
-    -- Set the toggle state of the shortcut for the newly created player
-    player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
+	local player = game.players[event.player_index]
+	-- Set the toggle state of the shortcut for the newly created player
+	player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
 end)
 
 script.on_configuration_changed(function()
@@ -54,44 +60,104 @@ end)
 script.on_load(function()
 	quality_tech = check_quality_unlock_tech()
 end)
-script.on_nth_tick(60, function(event)
-	
+
+
+script.on_nth_tick(6, function(event)
+    -- Ensure GUI toggle for all players
     for _, player in pairs(game.players) do
         player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
     end
 
-	local upgrade_machine_list = {}
-	local upgrade_module_list = {}
-	for _, ent in pairs(storage.built_machine) do
-		while true do
-			if not ent.entity.valid then
-				storage.built_machine[ent.unit_number] = nil
-				break
-			end
-			local next_tech = ent.entity.quality.next
-			if not next_tech then break end
-			if not check_quality_unlock(next_tech) and respect_technology then break end
-			if ent.level_time < base_time * multiplier ^ next_tech.level then
-				if (ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged )and ent.level_time < 9999999 then
-					ent.level_time = ent.level_time + 1
-				end
-			else
-				table.insert(upgrade_machine_list, ent)
-				ent.level_time = 0
-			end
-			if ent.level_time > base_time_module and is_update_module then
-				table.insert(upgrade_module_list, ent)
-			end
-			break
-		end
-	end
-	for _, v in pairs(upgrade_machine_list) do
-		upgrade_machines(v)
-	end
-	for _, v in pairs(upgrade_module_list) do
-		upgrade_module(v)
-	end
+    -- First run initialization
+    if first_search then
+        get_built_machine()
+        first_search = false
+        refresh_machine_order()
+    end
+
+    -- If we reach the end of the machine list, refresh it to randomize the order again
+    if processed_machine_index > #machine_order then
+        processed_machine_index = 1
+        refresh_machine_order()
+    end
+
+    -- Initialize lists for upgrades within the tick
+    local upgrade_machine_list = {}
+    local upgrade_module_list = {}
+
+    -- Process up to `max_per_tick` items in each tick
+    local count = 0
+    while count < max_per_tick and processed_machine_index <= #machine_order do
+        local ent = machine_order[processed_machine_index]
+        processed_machine_index = processed_machine_index + 1
+        count = count + 1
+
+		local ticks_elapsed = game.tick - ent.last_tick
+		ent.last_tick = game.tick
+
+		local sec_passed = ticks_elapsed / 60
+
+        -- Main logic for machine processing
+        while true do
+            if not ent.entity.valid then
+                storage.built_machine[ent.unit_number] = nil  -- Remove invalid entity
+                break
+            end
+
+            local next_tech = ent.entity.quality.next
+            if not next_tech then break end
+            if not check_quality_unlock(next_tech) and respect_technology then break end
+
+            -- Upgrade check based on level time and base time
+            if ent.level_time < base_time * multiplier ^ next_tech.level then
+                if (ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged) and ent.level_time < 9999999 then
+                    ent.level_time = ent.level_time + sec_passed
+                end
+            else
+                table.insert(upgrade_machine_list, ent)
+                ent.level_time = 0
+            end
+
+            -- Module update check
+            if ent.level_time > base_time_module and is_update_module then
+                table.insert(upgrade_module_list, ent)
+            end
+            break
+        end
+    end
+
+    -- Perform upgrades based on lists created
+    for _, v in pairs(upgrade_machine_list) do
+        upgrade_machines(v)
+    end
+    for _, v in pairs(upgrade_module_list) do
+        upgrade_module(v)
+    end
 end)
+
+-- Function to shuffle the table of machines for randomized order
+function shuffle_table(tbl)
+    local n = #tbl
+    for i = 1, n do
+        local j = math.random(i, n)
+        tbl[i], tbl[j] = tbl[j], tbl[i]
+    end
+end
+-- Function to update the machine order list (shuffles only if it needs a new iteration)
+function refresh_machine_order()
+    machine_order = {}
+    for unit_number, ent in pairs(storage.built_machine) do
+        if ent.entity and ent.entity.valid then
+            -- Initialize last_tick if it does not exist
+            if not ent.last_tick then
+                ent.last_tick = game.tick  -- Set to the current tick on first encounter
+            end
+            table.insert(machine_order, ent)
+        end
+    end
+    shuffle_table(machine_order) -- Shuffle once to randomize the processing order
+end
+
 function check_quality_unlock_tech()
 	local q_t = {}
 	for k, v in pairs(prototypes.technology) do
@@ -175,18 +241,19 @@ end
 
 function get_built_machine()
 	storage.built_machine = storage.built_machine or {}
-	if next(storage.built_machine) ~= nil then
-		for unit_number, machine in pairs(storage.built_machines) do
-			if not machine.entity or not machine.entity.valid then
-				storage.built_machines[unit_number] = nil
-			end
-		end
-	end
-
+	
 	for _, surface in pairs(game.surfaces) do
 		local entities = surface.find_entities_filtered { type = s_filter }
 		for _, v in pairs(entities) do
 			Add_storage(v)
+		end
+	end
+
+	if next(storage.built_machine) ~= nil then
+		for unit_number, machine in pairs(storage.built_machine) do
+			if not machine.entity or not machine.entity.valid then
+				storage.built_machine[unit_number] = nil
+			end
 		end
 	end
 end
@@ -242,9 +309,8 @@ function On_select_changed(event)
 		-- end
 		if not matches_filter then return end
 		-- If technology is researched and entity matches filter, show or update the GUI
-		local ent_name = event.last_entity.name  -- Store the raw entity name
+		local ent_name = event.last_entity.name -- Store the raw entity name
 		if not existing_gui then
-			
 			existing_gui = gui_container.add({
 				type = "frame",
 				name = "machine-exp",
@@ -258,26 +324,26 @@ function On_select_changed(event)
 
 		-- Update the GUI with EXP information if available
 		if storage.built_machine[event.last_entity.unit_number] then
-			storage.gui.visible = true  -- Show the GUI when there is no data
-			storage.gui.caption = (storage.built_machine[event.last_entity.unit_number].level_time or "0")
+			storage.gui.visible = true -- Show the GUI when there is no data
+			storage.gui.caption = (math.floor(storage.built_machine[event.last_entity.unit_number].level_time) or "0")
 		else
-			storage.gui.visible = false  -- Hide the GUI when there is no data
+			storage.gui.visible = false -- Hide the GUI when there is no data
 		end
 	end
 end
 
 function toggle_machine_exp_gui(player)
-    local existing_gui = player.gui.left["machine-exp"]
-    -- Toggle the shortcut
-    player.set_shortcut_toggled('toggle-machine-exp-gui', not active_gui)
+	local existing_gui = player.gui.left["machine-exp"]
+	-- Toggle the shortcut
+	player.set_shortcut_toggled('toggle-machine-exp-gui', not active_gui)
 
-    if existing_gui then
-        -- If GUI exists, destroy it
-        existing_gui.destroy()
+	if existing_gui then
+		-- If GUI exists, destroy it
+		existing_gui.destroy()
 		active_gui = false
-    else
+	else
 		active_gui = true
-    end
+	end
 end
 
 script.on_event(
@@ -308,14 +374,13 @@ script.on_event(
 )
 
 script.on_event("toggle-machine-exp-key", function(event)
-    local player = game.players[event.player_index]
-    toggle_machine_exp_gui(player)
+	local player = game.players[event.player_index]
+	toggle_machine_exp_gui(player)
 end)
 
 script.on_event(defines.events.on_lua_shortcut, function(event)
 	if event.prototype_name == 'toggle-machine-exp-gui' then
 		local player = game.players[event.player_index]
-    	toggle_machine_exp_gui(player)
-
+		toggle_machine_exp_gui(player)
 	end
 end)
