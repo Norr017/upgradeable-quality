@@ -190,6 +190,12 @@ end
 
 function upgrade_machines(ent)
 	if not ent.entity.quality.next then return end
+	local old_inv = ent.entity.get_output_inventory()
+	local content
+	if old_inv then -- preclear the inventory to prevent output drop to ground
+		content = old_inv.get_contents()
+		old_inv.clear()
+	end
 	local new_eneity = ent.entity.surface.create_entity {
 		name = ent.entity.name,
 		position = ent.entity.position,
@@ -198,6 +204,13 @@ function upgrade_machines(ent)
 		force = ent.entity.force,
 		fast_replace = true
 	}
+	if content then 
+		for _,v in pairs(content) do
+			new_eneity.get_output_inventory().insert({name = v.name,count = v.count,quality = v.quality})
+		end
+	end
+	
+	-- destroy leaving items
 	local temp_ent = new_eneity.surface.find_entities(new_eneity.bounding_box)
 	for _, v in pairs(temp_ent) do
 		if v.type == "item-entity" then
