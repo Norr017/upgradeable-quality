@@ -106,9 +106,9 @@ script.on_nth_tick(6, function(event)
 			if not check_quality_unlock(next_tech) and respect_technology then break end
 			if not next_tech and not have_upgradeable_module then break end         -- check if upgradeable
 			if ent.level_time < base_time * multiplier ^ (ent.entity.quality.level + 1) then -- Upgrade check based on level time and base time
-				--if ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged then
+				if ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged then
 				ent.level_time = ent.level_time + sec_passed
-				--end
+				end
 			else
 				table.insert(upgrade_machine_list, ent)
 				ent.level_time = 0
