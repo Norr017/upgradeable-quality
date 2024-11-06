@@ -104,20 +104,21 @@ script.on_nth_tick(6, function(event)
 				break
 			end
 			if not check_quality_unlock(next_tech) and respect_technology then break end
-			if not next_tech and not have_upgradeable_module then break end         -- check if upgradeable
-			if ent.level_time < base_time * multiplier ^ (ent.entity.quality.level + 1) then -- Upgrade check based on level time and base time
-				if ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged then
-				ent.level_time = ent.level_time + sec_passed
+			if not next_tech and not have_upgradeable_module then break end          -- check if upgradeable
+			if ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged then
+				if ent.level_time < base_time * multiplier ^ (ent.entity.quality.level + 1) then -- Upgrade check based on level time and base time
+					ent.level_time = ent.level_time + sec_passed
+				else
+					table.insert(upgrade_machine_list, ent)
+					ent.level_time = 0
 				end
-			else
-				table.insert(upgrade_machine_list, ent)
-				ent.level_time = 0
+
+				-- Module update check
+				if ent.level_time > base_time_module and is_update_module and have_upgradeable_module then
+					table.insert(upgrade_module_list, ent)
+				end
 			end
 
-			-- Module update check
-			if ent.level_time > base_time_module and is_update_module and have_upgradeable_module then
-				table.insert(upgrade_module_list, ent)
-			end
 			break
 		end
 	end
@@ -204,12 +205,12 @@ function upgrade_machines(ent)
 		force = ent.entity.force,
 		fast_replace = true
 	}
-	if content then 
-		for _,v in pairs(content) do
-			new_eneity.get_output_inventory().insert({name = v.name,count = v.count,quality = v.quality})
+	if content then
+		for _, v in pairs(content) do
+			new_eneity.get_output_inventory().insert({ name = v.name, count = v.count, quality = v.quality })
 		end
 	end
-	
+
 	-- destroy leaving items
 	local temp_ent = new_eneity.surface.find_entities(new_eneity.bounding_box)
 	for _, v in pairs(temp_ent) do

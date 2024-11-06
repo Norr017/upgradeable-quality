@@ -29,3 +29,8 @@ Date: 2024-11-4
     - make the gui can toggle off
     - add space-age asteroid-collector can upgrade
     - now machine upgrade can mantain all is setting include circuit and wire(should be)
+---------------------------------------------------------------------------------------------------
+Version: 0.0.11
+Date: 2024-11-4
+  Bugfix:
+    - repair when miningdrill upgrade, it drop alot items,now it will not upgrade when it full
