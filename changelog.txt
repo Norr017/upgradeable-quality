@@ -1,27 +1,19 @@
 ---------------------------------------------------------------------------------------------------
-Version: 0.0.1
-Date: 2024-10-30
+Version: 0.0.13
+Date: 2024-11-26
   Bugfix:
-    - hello world
+    - change to ignore the pyalinelife hidden beacon
 ---------------------------------------------------------------------------------------------------
-Version: 0.0.4
-Date: 2024-11-3
+Version: 0.0.12
+Date: 2024-11-25
   Bugfix:
-    - fix crash when machine is destoy
-    - fix rotate and mirror problem
-    - add respect tech, when technology is not researched, upgrade will not apply
+    - add useful building to upgrade
+    - move time setting to runtime setting
 ---------------------------------------------------------------------------------------------------
-Version: 0.0.5
-Date: 2024-11-3
+Version: 0.0.11
+Date: 2024-11-4
   Bugfix:
-    - add solar reactor accumulator boiler generator to upgrade
-    - fix wire lost when upgrade
----------------------------------------------------------------------------------------------------
-Version: 0.0.6
-Date: 2024-11-3
-  Bugfix:
-    - add a small gui to show the current machine exp
-    - fix accumulator exp gain,only when is full charge
+    - repair when miningdrill upgrade, it drop alot items,now it will not upgrade when it full
 ---------------------------------------------------------------------------------------------------
 Version: 0.0.8
 Date: 2024-11-4
@@ -30,7 +22,9 @@ Date: 2024-11-4
     - add space-age asteroid-collector can upgrade
     - now machine upgrade can mantain all is setting include circuit and wire(should be)
 ---------------------------------------------------------------------------------------------------
-Version: 0.0.11
-Date: 2024-11-4
+Version: 0.0.6
+Date: 2024-11-3
   Bugfix:
-    - repair when miningdrill upgrade, it drop alot items,now it will not upgrade when it full
+    - add a small gui to show the current machine exp
+    - fix accumulator exp gain,only when is full charge
+

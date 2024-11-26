@@ -1,6 +1,11 @@
 require("util")
+require "scripts.pyalienlife"
+require "scripts.gui"
 
 local filter = { { filter = "type", type = "ammo-turret" },
+	{ filter = "type", type = "electric-turret" },
+	{ filter = "type", type = "fluid-turret" },
+	{ filter = "type", type = "artillery-turret" },
 	{ filter = "type", type = "assembling-machine" },
 	{ filter = "type", type = "furnace" },
 	{ filter = "type", type = "lab" },
@@ -10,13 +15,26 @@ local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "solar-panel" },
 	{ filter = "type", type = "accumulator" },
 	{ filter = "type", type = "reactor" },
-	{ filter = "type", type = "beacon" }
+	{ filter = "type", type = "beacon" },
+	{ filter = "type", type = "offshore-pump" },
+	{ filter = "type", type = "rocket-silo" },
+	{ filter = "type", type = "inserter" },
+	{ filter = "type", type = "container" },
+	{ filter = "type", type = "logistic-container" },
+	{ filter = "type", type = "electric-pole" },
+	{ filter = "type", type = "roboport" },
+	{ filter = "type", type = "pump" }
 }
 
-if script.active_mods["space-age"] then
+if script.active_mods["space-age"] and settings.startup["upgrade_space_age"].value then
 	table.insert(filter, { filter = "type", type = "asteroid-collector" })
+	table.insert(filter, { filter = "type", type = "fusion-reactor" })
+	table.insert(filter, { filter = "type", type = "fusion-generator" })
+	table.insert(filter, { filter = "type", type = "lightning-attractor" })
+	table.insert(filter, { filter = "type", type = "cargo-landing-pad" })
+	table.insert(filter, { filter = "type", type = "cargo-bay" })
+	table.insert(filter, { filter = "type", type = "thruster" })
 end
-
 
 function get_lite_filter()
 	local temp_filter = {}
@@ -28,12 +46,13 @@ end
 
 local s_filter = get_lite_filter()
 
-local base_time = settings.startup["base_time_to_level_up"].value
-local multiplier = settings.startup["multiplier_time_to_level_up"].value
-local is_update_module = settings.startup["randomly_upgrade_inside_module"].value
-local base_time_module = settings.startup["time_to_randomly_levelup_inside_module"].value
+local is_update_module = settings.startup["upgrade_module"].value
 local respect_technology = settings.startup["respect_technology"].value
-local quality_tech = {}
+
+local base_time = settings.global["base_time_to_level_up"].value
+local multiplier = settings.global["multiplier_time_to_level_up"].value
+local base_time_module = settings.global["time_to_randomly_levelup_inside_module"].value
+
 local active_gui = false
 local first_search = true
 
@@ -45,6 +64,13 @@ script.on_init(function()
 	for _, player in pairs(game.players) do
 		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
 	end
+	
+end)
+
+script.on_event(defines.events.on_runtime_mod_setting_changed, function()
+	base_time = settings.global["base_time_to_level_up"].value
+	multiplier = settings.global["multiplier_time_to_level_up"].value
+	base_time_module = settings.global["time_to_randomly_levelup_inside_module"].value
 end)
 
 script.on_event(defines.events.on_player_created, function(event)
@@ -61,10 +87,10 @@ script.on_nth_tick(6, function(event)
 
 	-- First run initialization
 	if first_search then
-		get_built_machine()
-		quality_tech = check_quality_unlock_tech()
 		first_search = false
+		get_built_machine()
 		refresh_machine_order()
+		CheckPyalienBeacon()
 	end
 
 	-- If we reach the end of the machine list, refresh it to randomize the order again
@@ -91,11 +117,14 @@ script.on_nth_tick(6, function(event)
 
 		-- Main logic for machine processing
 		while true do
-			if not ent.entity.valid then
-				storage.built_machine[ent.unit_number] = nil -- Remove invalid entity
+			if not ent.entity.valid then -- Remove invalid entity
+				storage.built_machine[ent.unit_number] = nil
 				break
 			end
-
+			if string.find(ent.entity.prototype.name, "hidden") then -- special for pyalien turd beacon
+				storage.built_machine[ent.unit_number] = nil
+				break
+			end
 			local next_tech = ent.entity.quality.next
 			local module_count = ent.entity.get_module_inventory()
 			local have_upgradeable_module = can_upgrade_module(ent.entity)
@@ -104,8 +133,11 @@ script.on_nth_tick(6, function(event)
 				break
 			end
 			if not check_quality_unlock(next_tech) and respect_technology then break end
-			if not next_tech and not have_upgradeable_module then break end          -- check if upgradeable
-			if ent.entity.status == defines.entity_status.working or ent.entity.status == defines.entity_status.fully_charged then
+			if not next_tech and not have_upgradeable_module then break end -- check if upgradeable
+			if ent.entity.status == defines.entity_status.working or
+				ent.entity.status == defines.entity_status.fully_charged or
+				ent.entity.status == defines.entity_status.normal or
+				ent.entity.status == nil then
 				if ent.level_time < base_time * multiplier ^ (ent.entity.quality.level + 1) then -- Upgrade check based on level time and base time
 					ent.level_time = ent.level_time + sec_passed
 				else
@@ -169,24 +201,9 @@ function can_upgrade_module(ent)
 	return false
 end
 
-function check_quality_unlock_tech()
-	local q_t = {}
-	for k, v in pairs(prototypes.technology) do
-		for k1, v1 in pairs(v.effects) do
-			if v1["type"] == "unlock-quality" then
-				q_t[v1["quality"]] = k
-			end
-		end
-	end
-	return q_t
-end
-
 function check_quality_unlock(tech)
 	if not tech then return true end
-	local name = tech.name
-	local tech_name = quality_tech[name]
-	if tech_name == nil then return true end
-	return game.forces["player"].technologies[tech_name].researched
+	return game.forces["player"].is_quality_unlocked(tech)
 end
 
 function upgrade_machines(ent)
@@ -224,7 +241,6 @@ function upgrade_machines(ent)
 end
 
 function upgrade_module(ent)
-	if not ent.entity.get_module_inventory() then return end
 	local inv = ent.entity.get_module_inventory()
 	if not inv then return end
 	local content = inv.get_contents()
@@ -293,66 +309,6 @@ function is_include(value, tab)
 	return false
 end
 
-function On_select_changed(event)
-	if not active_gui then return end
-	if event.last_entity then
-		local player = game.players[event.player_index]
-		local gui_container = player.gui.left
-		local existing_gui = gui_container["machine-exp"]
-
-		-- Check if "quality-module" technology is researched
-		local has_technology = player.force.technologies["quality-module"].researched
-
-		-- Check if there is a last entity and if it matches the filter
-		local matches_filter = false
-		-- if event.last_entity then
-		for _, condition in ipairs(filter) do
-			if event.last_entity.type == condition.type then
-				matches_filter = true
-				break
-			end
-		end
-		-- end
-		if not matches_filter then return end
-		-- If technology is researched and entity matches filter, show or update the GUI
-		local ent_name = event.last_entity.name -- Store the raw entity name
-		if not existing_gui then
-			existing_gui = gui_container.add({
-				type = "frame",
-				name = "machine-exp",
-				caption = { "", { "entity-name." .. ent_name }, " EXP" }, -- Getting the localized name
-				direction = "vertical",
-			})
-			existing_gui.style.maximal_width = 250
-			storage.gui = existing_gui.add({ type = "label", name = "exp-num", caption = "none" })
-		else
-			existing_gui.caption = { "", { "entity-name." .. ent_name }, " EXP" }
-		end
-
-		-- Update the GUI with EXP information if available
-		if storage.built_machine[event.last_entity.unit_number] then
-			storage.gui.visible = true -- Show the GUI when there is no data
-			storage.gui.caption = (math.floor(storage.built_machine[event.last_entity.unit_number].level_time) or "0")
-		else
-			storage.gui.visible = false -- Hide the GUI when there is no data
-		end
-	end
-end
-
-function toggle_machine_exp_gui(player)
-	local existing_gui = player.gui.left["machine-exp"]
-	-- Toggle the shortcut
-	player.set_shortcut_toggled('toggle-machine-exp-gui', not active_gui)
-
-	if existing_gui then
-		-- If GUI exists, destroy it
-		existing_gui.destroy()
-		active_gui = false
-	else
-		active_gui = true
-	end
-end
-
 script.on_event(
 	defines.events.on_player_mined_entity,
 	On_mined_entity,
@@ -375,19 +331,4 @@ script.on_event(
 	defines.events.on_built_entity,
 	On_built_entity,
 	filter)
-script.on_event(
-	defines.events.on_selected_entity_changed,
-	On_select_changed
-)
 
-script.on_event("toggle-machine-exp-key", function(event)
-	local player = game.players[event.player_index]
-	toggle_machine_exp_gui(player)
-end)
-
-script.on_event(defines.events.on_lua_shortcut, function(event)
-	if event.prototype_name == 'toggle-machine-exp-gui' then
-		local player = game.players[event.player_index]
-		toggle_machine_exp_gui(player)
-	end
-end)
