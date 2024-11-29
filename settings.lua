@@ -21,6 +21,14 @@ data:extend({
     --     default_value = true
     -- },
     {
+        type = "string-setting",
+        name = "skipped_entities",
+        setting_type = "startup",
+		order = "d",
+        default_value = "hidden,dino-dig-site-food-input,",
+        allow_blank = true
+    },
+    {
         type = "int-setting",
         name = "base_time_to_level_up",
         setting_type = "runtime-global",

@@ -9,6 +9,7 @@ local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "assembling-machine" },
 	{ filter = "type", type = "furnace" },
 	{ filter = "type", type = "lab" },
+	{ filter = "type", type = "container" },
 	{ filter = "type", type = "mining-drill" },
 	{ filter = "type", type = "boiler" },
 	{ filter = "type", type = "generator" },
@@ -19,7 +20,6 @@ local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "offshore-pump" },
 	{ filter = "type", type = "rocket-silo" },
 	{ filter = "type", type = "inserter" },
-	{ filter = "type", type = "container" },
 	{ filter = "type", type = "logistic-container" },
 	{ filter = "type", type = "electric-pole" },
 	{ filter = "type", type = "roboport" },
@@ -48,6 +48,11 @@ local s_filter = get_lite_filter()
 
 local is_update_module = settings.startup["upgrade_module"].value
 local respect_technology = settings.startup["respect_technology"].value
+local skipped_setting = settings.startup["skipped_entities"].value
+local skipped_entities = {}
+for ent in skipped_setting:gmatch('([^,]+)') do
+	table.insert(skipped_entities, ent)
+end
 
 local base_time = settings.global["base_time_to_level_up"].value
 local multiplier = settings.global["multiplier_time_to_level_up"].value
@@ -64,7 +69,6 @@ script.on_init(function()
 	for _, player in pairs(game.players) do
 		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
 	end
-	
 end)
 
 script.on_event(defines.events.on_runtime_mod_setting_changed, function()
@@ -112,42 +116,52 @@ script.on_nth_tick(6, function(event)
 
 		local ticks_elapsed = game.tick - ent.last_tick
 		ent.last_tick = game.tick
-
 		local sec_passed = ticks_elapsed / 60
 
 		-- Main logic for machine processing
 		while true do
+			-- check for machine valid
 			if not ent.entity.valid then -- Remove invalid entity
 				storage.built_machine[ent.unit_number] = nil
 				break
 			end
-			if string.find(ent.entity.prototype.name, "hidden") then -- special for pyalien turd beacon
-				storage.built_machine[ent.unit_number] = nil
-				break
+			
+			local skip = false
+			for _, v in pairs(skipped_entities) do
+				if string.find(ent.entity.name, v, 1, true) then
+					skip = true
+					break
+				end
 			end
-			local next_tech = ent.entity.quality.next
-			local module_count = ent.entity.get_module_inventory()
-			local have_upgradeable_module = can_upgrade_module(ent.entity)
-			if not next_tech and not module_count then
+			if skip then
 				storage.built_machine[ent.unit_number] = nil -- Remove fully upgraded entity
 				break
 			end
-			if not check_quality_unlock(next_tech) and respect_technology then break end
-			if not next_tech and not have_upgradeable_module then break end -- check if upgradeable
+			if not ent.entity.quality.next and not ent.entity.get_module_inventory() then
+				storage.built_machine[ent.unit_number] = nil -- Remove fully upgraded entity
+				break
+			end
+
 			if ent.entity.status == defines.entity_status.working or
 				ent.entity.status == defines.entity_status.fully_charged or
 				ent.entity.status == defines.entity_status.normal or
 				ent.entity.status == nil then
-				if ent.level_time < base_time * multiplier ^ (ent.entity.quality.level + 1) then -- Upgrade check based on level time and base time
+				local machine_check = can_upgrade_machine(ent.entity)
+				local module_check = can_upgrade_module(ent.entity)
+				local target_time = base_time * multiplier ^ (ent.entity.quality.level + 1)
+
+				if ent.level_time < target_time and ent.level_time < 999999 then
 					ent.level_time = ent.level_time + sec_passed
-				else
+				end
+				-- machine update check
+				if ent.level_time > target_time and machine_check then
 					table.insert(upgrade_machine_list, ent)
 					ent.level_time = 0
 				end
-
 				-- Module update check
-				if ent.level_time > base_time_module and is_update_module and have_upgradeable_module then
+				if ent.level_time > base_time_module and is_update_module and module_check then
 					table.insert(upgrade_module_list, ent)
+					ent.level_time = 0
 				end
 			end
 
@@ -190,19 +204,31 @@ function refresh_machine_order()
 	shuffle_table(machine_order) -- Shuffle once to randomize the processing order
 end
 
+function can_upgrade_machine(ent)
+	if respect_technology then
+		return check_quality_unlock(ent.quality.next)
+	else
+		return ent.quality.next
+	end
+end
+
 function can_upgrade_module(ent)
 	local module_inv = ent.get_module_inventory()
 	if not module_inv then return false end
 	local contents = module_inv.get_contents()
 	if not contents or contents == {} then return false end
 	for _, v in pairs(contents) do
-		if prototypes.quality[v.quality].next then return true end
+		local next_quality = prototypes.quality[v.quality].next
+		if respect_technology then
+			return next_quality and check_quality_unlock(next_quality)
+		else
+			return next_quality
+		end
 	end
-	return false
 end
 
 function check_quality_unlock(tech)
-	if not tech then return true end
+	if not tech then return false end
 	return game.forces["player"].is_quality_unlocked(tech)
 end
 
@@ -252,7 +278,6 @@ function upgrade_module(ent)
 		if prototypes.quality[v.quality].next and upgrade then
 			upgrade = false
 			inv.insert { name = v.name, quality = prototypes.quality[v.quality].next.name, count = v.count }
-			storage.built_machine[ent.unit_number].level_time = 0
 		else
 			inv.insert { name = v.name, quality = v.quality, count = v.count }
 		end
@@ -331,4 +356,3 @@ script.on_event(
 	defines.events.on_built_entity,
 	On_built_entity,
 	filter)
-

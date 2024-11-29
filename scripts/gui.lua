@@ -1,7 +1,7 @@
-
 function On_select_changed(event)
 	if not active_gui then return end
 	if event.last_entity then
+		if not storage.built_machine[event.last_entity.unit_number] then return end
 		local player = game.players[event.player_index]
 		local gui_container = player.gui.left
 		local existing_gui = gui_container["machine-exp"]
@@ -9,17 +9,6 @@ function On_select_changed(event)
 		-- Check if "quality-module" technology is researched
 		-- local has_technology = player.force.technologies["quality-module"].researched
 
-		-- Check if there is a last entity and if it matches the filter
-		local matches_filter = false
-		-- if event.last_entity then
-		for _, condition in ipairs(filter) do
-			if event.last_entity.type == condition.type then
-				matches_filter = true
-				break
-			end
-		end
-		-- end
-		if not matches_filter then return end
 		-- If technology is researched and entity matches filter, show or update the GUI
 		local ent_name = event.last_entity.name -- Store the raw entity name
 		if not existing_gui then
@@ -36,12 +25,9 @@ function On_select_changed(event)
 		end
 
 		-- Update the GUI with EXP information if available
-		if storage.built_machine[event.last_entity.unit_number] then
-			storage.gui.visible = true -- Show the GUI when there is no data
-			storage.gui.caption = (math.floor(storage.built_machine[event.last_entity.unit_number].level_time) or "0")
-		else
-			storage.gui.visible = false -- Hide the GUI when there is no data
-		end
+		storage.gui.parent.visible = true
+		storage.gui.visible = true -- Show the GUI when there is no data
+		storage.gui.caption = (math.floor(storage.built_machine[event.last_entity.unit_number].level_time) or "0")
 	end
 end
 
