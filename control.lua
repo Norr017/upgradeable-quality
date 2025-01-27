@@ -13,6 +13,7 @@ local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "mining-drill" },
 	{ filter = "type", type = "boiler" },
 	{ filter = "type", type = "generator" },
+	{ filter = "type", type = "burner-generator" },
 	{ filter = "type", type = "solar-panel" },
 	{ filter = "type", type = "accumulator" },
 	{ filter = "type", type = "reactor" },
@@ -23,7 +24,8 @@ local filter = { { filter = "type", type = "ammo-turret" },
 	{ filter = "type", type = "logistic-container" },
 	{ filter = "type", type = "electric-pole" },
 	{ filter = "type", type = "roboport" },
-	{ filter = "type", type = "pump" }
+	{ filter = "type", type = "pump" },
+	{ filter = "type", type = "radar" }
 }
 
 if script.active_mods["space-age"] and settings.startup["upgrade_space_age"].value then
@@ -62,7 +64,6 @@ local active_gui = false
 local first_search = true
 
 local processed_machine_index = 1 -- Tracks the current position in the randomized list
-local machine_order = {}          -- Stores the randomized order of machines to process
 local max_per_tick = 50           -- Max items to process per tick
 
 script.on_init(function()
@@ -93,14 +94,8 @@ script.on_nth_tick(6, function(event)
 	if first_search then
 		first_search = false
 		get_built_machine()
-		refresh_machine_order()
+		-- refresh_machine_order()
 		CheckPyalienBeacon()
-	end
-
-	-- If we reach the end of the machine list, refresh it to randomize the order again
-	if processed_machine_index > #machine_order then
-		processed_machine_index = 1
-		refresh_machine_order()
 	end
 
 	-- Initialize lists for upgrades within the tick
@@ -109,11 +104,10 @@ script.on_nth_tick(6, function(event)
 
 	-- Process up to `max_per_tick` items in each tick
 	local count = 0
-	while count < max_per_tick and processed_machine_index <= #machine_order do
-		local ent = machine_order[processed_machine_index]
-		processed_machine_index = processed_machine_index + 1
-		count = count + 1
-
+	while count < max_per_tick do
+		local ent = get_next_machine()
+		if not ent then break end
+		if not ent.last_tick then ent.last_tick = game.tick end
 		local ticks_elapsed = game.tick - ent.last_tick
 		ent.last_tick = game.tick
 		local sec_passed = ticks_elapsed / 60
@@ -125,7 +119,7 @@ script.on_nth_tick(6, function(event)
 				storage.built_machine[ent.unit_number] = nil
 				break
 			end
-			
+			-- check entitys in blacklist
 			local skip = false
 			for _, v in pairs(skipped_entities) do
 				if string.find(ent.entity.name, v, 1, true) then
@@ -134,14 +128,21 @@ script.on_nth_tick(6, function(event)
 				end
 			end
 			if skip then
-				storage.built_machine[ent.unit_number] = nil -- Remove fully upgraded entity
+				storage.built_machine[ent.unit_number] = nil
 				break
 			end
+			-- Remove fully upgraded entity,with no next level and no module space
 			if not ent.entity.quality.next and not ent.entity.get_module_inventory() then
-				storage.built_machine[ent.unit_number] = nil -- Remove fully upgraded entity
+				storage.built_machine[ent.unit_number] = nil
 				break
 			end
-
+			-- Remove hidden entity
+			local box =ent.entity.bounding_box
+			if box.left_top.x == box.right_bottom.x and box.left_top.y == box.right_bottom.y then
+				storage.built_machine[ent.unit_number] = nil
+				break
+			end
+			-- Working check
 			if ent.entity.status == defines.entity_status.working or
 				ent.entity.status == defines.entity_status.fully_charged or
 				ent.entity.status == defines.entity_status.normal or
@@ -154,12 +155,12 @@ script.on_nth_tick(6, function(event)
 					ent.level_time = ent.level_time + sec_passed
 				end
 				-- machine update check
-				if ent.level_time > target_time and machine_check then
+				if ent.level_time >= target_time and machine_check then
 					table.insert(upgrade_machine_list, ent)
 					ent.level_time = 0
 				end
 				-- Module update check
-				if ent.level_time > base_time_module and is_update_module and module_check then
+				if ent.level_time >= base_time_module and is_update_module and module_check then
 					table.insert(upgrade_module_list, ent)
 					ent.level_time = 0
 				end
@@ -178,30 +179,23 @@ script.on_nth_tick(6, function(event)
 	end
 end)
 
--- Function to shuffle the table of machines for randomized order
-function shuffle_table(tbl)
-	local n = #tbl
-	for i = 1, n do
-		local j = math.random(i, n)
-		tbl[i], tbl[j] = tbl[j], tbl[i]
+function get_next_machine()
+	local res = next(storage.built_machine, processed_machine_index)
+	if res then
+		processed_machine_index = res
+		return storage.built_machine[processed_machine_index]
+	else
+		processed_machine_index = 1
+		return nil
 	end
 end
 
--- Function to update the machine order list (shuffles only if it needs a new iteration)
-function refresh_machine_order()
-	machine_order = {}
-	for unit_number, ent in pairs(storage.built_machine) do
-		if ent.entity and ent.entity.valid then
-			-- Initialize last_tick if it does not exist
-			if not ent.last_tick then
-				ent.last_tick = game.tick -- Set to the current tick on first encounter
-			end
-			table.insert(machine_order, ent)
-		else
-			storage.built_machine[ent.unit_number] = nil
-		end
+function table_leng(t)
+	local leng = 0
+	for k, v in pairs(t) do
+		leng = leng + 1
 	end
-	shuffle_table(machine_order) -- Shuffle once to randomize the processing order
+	return leng;
 end
 
 function can_upgrade_machine(ent)
@@ -255,7 +249,14 @@ function upgrade_machines(ent)
 	end
 
 	-- destroy leaving items
-	local temp_ent = new_eneity.surface.find_entities(new_eneity.bounding_box)
+	local bounding = new_eneity.bounding_box
+	local expand = 5
+	bounding["left_top"]["x"] = bounding["left_top"]["x"] - expand
+	bounding["left_top"]["y"] = bounding["left_top"]["y"] - expand
+	bounding["right_bottom"]["x"] = bounding["right_bottom"]["x"] + expand
+	bounding["right_bottom"]["y"] = bounding["right_bottom"]["y"] + expand
+
+	local temp_ent = new_eneity.surface.find_entities(bounding)
 	for _, v in pairs(temp_ent) do
 		if v.type == "item-entity" then
 			v.destroy()
@@ -356,3 +357,14 @@ script.on_event(
 	defines.events.on_built_entity,
 	On_built_entity,
 	filter)
+
+script.on_event(
+	defines.events.on_space_platform_built_entity,
+	On_built_entity,
+	filter
+)
+script.on_event(
+	defines.events.on_space_platform_mined_entity,
+	On_mined_entity,
+	filter
+)
