@@ -5,11 +5,6 @@ function On_select_changed(event)
 		local player = game.players[event.player_index]
 		local gui_container = player.gui.left
 		local existing_gui = gui_container["machine-exp"]
-
-		-- Check if "quality-module" technology is researched
-		-- local has_technology = player.force.technologies["quality-module"].researched
-
-		-- If technology is researched and entity matches filter, show or update the GUI
 		local ent_name = event.last_entity.name -- Store the raw entity name
 		if not existing_gui then
 			existing_gui = gui_container.add({
@@ -31,33 +26,24 @@ function On_select_changed(event)
 	end
 end
 
-function toggle_machine_exp_gui(player)
-	local existing_gui = player.gui.left["machine-exp"]
-	-- Toggle the shortcut
-	player.set_shortcut_toggled('toggle-machine-exp-gui', not active_gui)
-
-	if existing_gui then
-		-- If GUI exists, destroy it
-		existing_gui.destroy()
-		active_gui = false
-	else
-		active_gui = true
+function change_exp_gui(option)
+	for _, player in pairs(game.players) do
+		local existing_gui = player.gui.left["machine-exp"]
+		if option.value then
+			active_gui = true
+		else
+			if existing_gui then existing_gui.destroy() end
+			active_gui = false
+		end
 	end
+end
+
+function initialize_gui()
+	gui_option = settings.global["show_exp_gui"]
+	change_exp_gui(gui_option)
 end
 
 script.on_event(
 	defines.events.on_selected_entity_changed,
 	On_select_changed
 )
-
-script.on_event("toggle-machine-exp-key", function(event)
-	local player = game.players[event.player_index]
-	toggle_machine_exp_gui(player)
-end)
-
-script.on_event(defines.events.on_lua_shortcut, function(event)
-	if event.prototype_name == 'toggle-machine-exp-gui' then
-		local player = game.players[event.player_index]
-		toggle_machine_exp_gui(player)
-	end
-end)

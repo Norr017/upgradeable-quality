@@ -1,110 +1,50 @@
 require("util")
-require "scripts.pyalienlife"
 require "scripts.gui"
+require "scripts.skip_entities"
 
-local filter = { { filter = "type", type = "ammo-turret" },
-	{ filter = "type", type = "electric-turret" },
-	{ filter = "type", type = "fluid-turret" },
-	{ filter = "type", type = "artillery-turret" },
-	{ filter = "type", type = "assembling-machine" },
-	{ filter = "type", type = "furnace" },
-	{ filter = "type", type = "lab" },
-	{ filter = "type", type = "container" },
-	{ filter = "type", type = "mining-drill" },
-	{ filter = "type", type = "boiler" },
-	{ filter = "type", type = "generator" },
-	{ filter = "type", type = "burner-generator" },
-	{ filter = "type", type = "solar-panel" },
-	{ filter = "type", type = "accumulator" },
-	{ filter = "type", type = "reactor" },
-	{ filter = "type", type = "beacon" },
-	{ filter = "type", type = "offshore-pump" },
-	{ filter = "type", type = "rocket-silo" },
-	{ filter = "type", type = "inserter" },
-	{ filter = "type", type = "logistic-container" },
-	{ filter = "type", type = "electric-pole" },
-	{ filter = "type", type = "roboport" },
-	{ filter = "type", type = "pump" },
-	{ filter = "type", type = "radar" }
-}
-
-if script.active_mods["space-age"] and settings.startup["upgrade_space_age"].value then
-	table.insert(filter, { filter = "type", type = "asteroid-collector" })
-	table.insert(filter, { filter = "type", type = "fusion-reactor" })
-	table.insert(filter, { filter = "type", type = "fusion-generator" })
-	table.insert(filter, { filter = "type", type = "lightning-attractor" })
-	table.insert(filter, { filter = "type", type = "cargo-landing-pad" })
-	table.insert(filter, { filter = "type", type = "cargo-bay" })
-	table.insert(filter, { filter = "type", type = "thruster" })
+if storage.built_machine == nil then
+	storage.built_machine = {}
 end
-
-function get_lite_filter()
-	local temp_filter = {}
-	for _, v in pairs(filter) do
-		table.insert(temp_filter, v.type)
-	end
-	return temp_filter
-end
-
-local s_filter = get_lite_filter()
-
 local is_update_module = settings.startup["upgrade_module"].value
 local respect_technology = settings.startup["respect_technology"].value
-local skipped_setting = settings.startup["skipped_entities"].value
-local skipped_entities = {}
-for ent in skipped_setting:gmatch('([^,]+)') do
-	table.insert(skipped_entities, ent)
-end
 
 local base_time = settings.global["base_time_to_level_up"].value
 local multiplier = settings.global["multiplier_time_to_level_up"].value
 local base_time_module = settings.global["time_to_randomly_levelup_inside_module"].value
 
-local active_gui = false
 local first_search = true
 
 local processed_machine_index = 1 -- Tracks the current position in the randomized list
 local max_per_tick = 50           -- Max items to process per tick
 
 script.on_init(function()
-	for _, player in pairs(game.players) do
-		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
-	end
+
 end)
 
 script.on_event(defines.events.on_runtime_mod_setting_changed, function()
 	base_time = settings.global["base_time_to_level_up"].value
 	multiplier = settings.global["multiplier_time_to_level_up"].value
-	base_time_module = settings.global["time_to_randomly_levelup_inside_module"].value
-end)
-
-script.on_event(defines.events.on_player_created, function(event)
-	local player = game.players[event.player_index]
-	-- Set the toggle state of the shortcut for the newly created player
-	player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
+	base_time_modue = settings.global["time_to_randomly_levelup_inside_module"].value
+	gui_option = settings.global["show_exp_gui"]
+	change_exp_gui(gui_option)
 end)
 
 script.on_nth_tick(6, function(event)
-	-- Ensure GUI toggle for all players
-	for _, player in pairs(game.players) do
-		player.set_shortcut_toggled('toggle-machine-exp-gui', active_gui)
-	end
-
 	-- First run initialization
 	if first_search then
 		first_search = false
 		get_built_machine()
-		-- refresh_machine_order()
-		CheckPyalienBeacon()
+		initialize_gui()
 	end
 
-	-- Initialize lists for upgrades within the tick
+	-- Initialize lists for upgrade within the tick
 	local upgrade_machine_list = {}
 	local upgrade_module_list = {}
 
 	-- Process up to `max_per_tick` items in each tick
-	local count = 0
-	while count < max_per_tick do
+	if next(storage.built_machine) == nil then return end
+	local index = 0
+	while index < max_per_tick do
 		local ent = get_next_machine()
 		if not ent then break end
 		if not ent.last_tick then ent.last_tick = game.tick end
@@ -137,11 +77,12 @@ script.on_nth_tick(6, function(event)
 				break
 			end
 			-- Remove hidden entity
-			local box =ent.entity.bounding_box
-			if box.left_top.x == box.right_bottom.x and box.left_top.y == box.right_bottom.y then
+			local flags = ent.entity.prototype.flags
+			if not flags_check(ent.entity) then
 				storage.built_machine[ent.unit_number] = nil
 				break
 			end
+
 			-- Working check
 			if ent.entity.status == defines.entity_status.working or
 				ent.entity.status == defines.entity_status.fully_charged or
@@ -190,14 +131,6 @@ function get_next_machine()
 	end
 end
 
-function table_leng(t)
-	local leng = 0
-	for k, v in pairs(t) do
-		leng = leng + 1
-	end
-	return leng;
-end
-
 function can_upgrade_machine(ent)
 	if respect_technology then
 		return check_quality_unlock(ent.quality.next)
@@ -228,26 +161,21 @@ end
 
 function upgrade_machines(ent)
 	if not ent.entity.quality.next then return end
-	local old_inv = ent.entity.get_output_inventory()
-	local content
-	if old_inv then -- preclear the inventory to prevent output drop to ground
-		content = old_inv.get_contents()
-		old_inv.clear()
-	end
+	local temp_name = ent.entity.name
 	local new_eneity = ent.entity.surface.create_entity {
 		name = ent.entity.name,
 		position = ent.entity.position,
 		direction = ent.entity.direction,
-		quality = ent.entity.quality.next or ent.entity.quality,
+		quality = ent.entity.quality.next,
 		force = ent.entity.force,
-		fast_replace = true
+		fast_replace = true,
+		raise_built = true
 	}
-	if content then
-		for _, v in pairs(content) do
-			new_eneity.get_output_inventory().insert({ name = v.name, count = v.count, quality = v.quality })
-		end
+	if new_eneity == nil then
+		game.print(temp_name .. ",this entity cant upgrade normal,try add it to block list")
+		storage.built_machine[ent.unit_number] = nil
+		return
 	end
-
 	-- destroy leaving items
 	local bounding = new_eneity.bounding_box
 	local expand = 5
@@ -299,22 +227,38 @@ function get_built_machine()
 	storage.built_machine = storage.built_machine or {}
 
 	for _, surface in pairs(game.surfaces) do
-		local entities = surface.find_entities_filtered { type = s_filter }
+		local entities = surface.find_entities_filtered { force = "player" }
 		for _, v in pairs(entities) do
-			Add_storage(v)
+			if flags_check(v) then
+				Add_storage(v)
+			end
 		end
 	end
 end
 
-function On_built_entity(event)
-	if not event.entity then return end
-	Add_storage(event.entity)
+function flags_check(ent)
+	flags = ent.prototype.flags
+	if not ent.minable_flag then return false end
+	if flags == nil or flags == {} then return false end
+	local player_creation = false
+	for k, _ in pairs(flags) do
+		if k == "player-creation" then
+			player_creation = true
+		elseif k == "not-selectable-in-game" or
+			k == "not-deconstructable" or
+			k == "not-blueprintable" or
+			k == "placeable-off-grid" then
+			return false
+		end
+	end
+	return player_creation
 end
 
-function On_mined_entity(event)
+function On_built_entity(event)
 	if not event.entity then return end
-	if not storage.built_machine[event.entity.unit_number] then return end
-	storage.built_machine[event.entity.unit_number] = nil
+	if flags_check(event.entity) then
+		Add_storage(event.entity)
+	end
 end
 
 function Add_storage(v)
@@ -336,35 +280,14 @@ function is_include(value, tab)
 end
 
 script.on_event(
-	defines.events.on_player_mined_entity,
-	On_mined_entity,
-	filter
-)
-script.on_event(
-	defines.events.on_robot_mined_entity,
-	On_mined_entity,
-	filter)
-script.on_event(
-	defines.events.on_post_entity_died,
-	On_mined_entity,
-	filter)
-script.on_event(
 	defines.events.on_robot_built_entity,
-	On_built_entity,
-	filter)
+	On_built_entity)
 
 script.on_event(
 	defines.events.on_built_entity,
-	On_built_entity,
-	filter)
+	On_built_entity)
 
 script.on_event(
 	defines.events.on_space_platform_built_entity,
-	On_built_entity,
-	filter
-)
-script.on_event(
-	defines.events.on_space_platform_mined_entity,
-	On_mined_entity,
-	filter
+	On_built_entity
 )

@@ -25,7 +25,7 @@ data:extend({
         name = "skipped_entities",
         setting_type = "startup",
 		order = "d",
-        default_value = "hidden,dino-dig-site-food-input,",
+        default_value = "belt,splitter,loader,pipe,rail,combinator",
         allow_blank = true
     },
     {
@@ -56,6 +56,12 @@ data:extend({
         type = "bool-setting",
         name = "respect_technology",
         setting_type = "startup",
+        default_value = true
+    },
+    {
+        type = "bool-setting",
+        name = "show_exp_gui",
+        setting_type = "runtime-global",
         default_value = true
     }
 })
