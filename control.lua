@@ -2,9 +2,7 @@ require("util")
 require "scripts.gui"
 require "scripts.skip_entities"
 
-if storage.built_machine == nil then
-	storage.built_machine = {}
-end
+storage.built_machine = storage.built_machine or {}
 local is_update_module = settings.startup["upgrade_module"].value
 local respect_technology = settings.startup["respect_technology"].value
 
@@ -14,39 +12,40 @@ local base_time_module = settings.global["time_to_randomly_levelup_inside_module
 
 local first_search = true
 
-local processed_machine_index = 1 -- Tracks the current position in the randomized list
-local max_per_tick = 50           -- Max items to process per tick
-
+local processed_machine_index = nil -- Tracks the current position in the randomized list
+local max_per_tick = 30             -- Max items to process per tick
 script.on_init(function()
 
 end)
+script.on_load(function()
 
+end)
 script.on_event(defines.events.on_runtime_mod_setting_changed, function()
 	base_time = settings.global["base_time_to_level_up"].value
 	multiplier = settings.global["multiplier_time_to_level_up"].value
 	base_time_modue = settings.global["time_to_randomly_levelup_inside_module"].value
-	gui_option = settings.global["show_exp_gui"]
-	change_exp_gui(gui_option)
+	change_exp_gui(settings.global["show_exp_gui"].value)
 end)
 
-script.on_nth_tick(6, function(event)
+script.on_nth_tick(6, function()
 	-- First run initialization
 	if first_search then
 		first_search = false
 		get_built_machine()
 		initialize_gui()
+		return
 	end
 
 	-- Initialize lists for upgrade within the tick
 	local upgrade_machine_list = {}
 	local upgrade_module_list = {}
-
+	local new_entity_list = {}
+	local delete_entity_list = {}
 	-- Process up to `max_per_tick` items in each tick
 	if next(storage.built_machine) == nil then return end
-	local index = 0
-	while index < max_per_tick do
-		local ent = get_next_machine()
-		if not ent then break end
+	local machine_check_list = get_machine_check_list(max_per_tick) or {}
+	if next(machine_check_list) == nil then return end
+	for unit_number, ent in pairs(machine_check_list) do
 		if not ent.last_tick then ent.last_tick = game.tick end
 		local ticks_elapsed = game.tick - ent.last_tick
 		ent.last_tick = game.tick
@@ -56,30 +55,18 @@ script.on_nth_tick(6, function(event)
 		while true do
 			-- check for machine valid
 			if not ent.entity.valid then -- Remove invalid entity
-				storage.built_machine[ent.unit_number] = nil
+				table.insert(delete_entity_list, unit_number)
 				break
 			end
 			-- check entitys in blacklist
-			local skip = false
-			for _, v in pairs(skipped_entities) do
-				if string.find(ent.entity.name, v, 1, true) then
-					skip = true
-					break
-				end
-			end
-			if skip then
-				storage.built_machine[ent.unit_number] = nil
+
+			if not blacklist_check(ent.entity) or not flags_check(ent.entity) then
+				table.insert(delete_entity_list, unit_number)
 				break
 			end
 			-- Remove fully upgraded entity,with no next level and no module space
-			if not ent.entity.quality.next and not ent.entity.get_module_inventory() then
-				storage.built_machine[ent.unit_number] = nil
-				break
-			end
-			-- Remove hidden entity
-			local flags = ent.entity.prototype.flags
-			if not flags_check(ent.entity) then
-				storage.built_machine[ent.unit_number] = nil
+			if ent.machine_max and ent.no_module then
+				table.insert(delete_entity_list, unit_number)
 				break
 			end
 
@@ -88,60 +75,86 @@ script.on_nth_tick(6, function(event)
 				ent.entity.status == defines.entity_status.fully_charged or
 				ent.entity.status == defines.entity_status.normal or
 				ent.entity.status == nil then
-				local machine_check = can_upgrade_machine(ent.entity)
-				local module_check = can_upgrade_module(ent.entity)
+				local machine_check = can_upgrade_machine(ent)
+				local module_check = can_upgrade_module(ent)
 				local target_time = base_time * multiplier ^ (ent.entity.quality.level + 1)
 
 				if ent.level_time < target_time and ent.level_time < 999999 then
 					ent.level_time = ent.level_time + sec_passed
-				end
-				-- machine update check
-				if ent.level_time >= target_time and machine_check then
+					-- machine update check
+				elseif ent.level_time >= target_time and machine_check then
 					table.insert(upgrade_machine_list, ent)
 					ent.level_time = 0
-				end
-				-- Module update check
-				if ent.level_time >= base_time_module and is_update_module and module_check then
+					-- Module update check
+				elseif ent.level_time >= base_time_module and is_update_module and module_check then
 					table.insert(upgrade_module_list, ent)
 					ent.level_time = 0
 				end
 			end
-
 			break
 		end
 	end
 
 	-- Perform upgrades based on lists created
+
 	for _, v in pairs(upgrade_machine_list) do
-		upgrade_machines(v)
+		local number = v.entity.unit_number
+		local new_entity = upgrade_machines(v)
+		if new_entity then
+			table.insert(new_entity_list, new_entity)
+		end
+		table.insert(delete_entity_list, number)
 	end
 	for _, v in pairs(upgrade_module_list) do
 		upgrade_module(v)
 	end
+	for _, v in pairs(new_entity_list) do
+		Add_storage(v)
+	end
+	for _, v in pairs(delete_entity_list) do
+		storage.built_machine[v] = nil
+	end
 end)
 
-function get_next_machine()
-	local res = next(storage.built_machine, processed_machine_index)
-	if res then
-		processed_machine_index = res
-		return storage.built_machine[processed_machine_index]
-	else
-		processed_machine_index = 1
-		return nil
+function get_machine_check_list(count)
+	local list = {}
+	local res
+	for i = 1, count do
+		res = next(storage.built_machine, processed_machine_index)
+		if res then
+			processed_machine_index = res
+			list[res] = storage.built_machine[processed_machine_index]
+		else
+			processed_machine_index = nil
+			break
+		end
 	end
+	return list
 end
 
 function can_upgrade_machine(ent)
-	if respect_technology then
-		return check_quality_unlock(ent.quality.next)
+	if ent.machine_max then
+		return false
+	end
+	local quality_next = ent.entity.quality.next
+	if quality_next then
+		if respect_technology and not check_quality_unlock(quality_next) then
+			return false
+		end
+		return true
 	else
-		return ent.quality.next
+		ent.machine_max = true
+		return false
 	end
 end
 
 function can_upgrade_module(ent)
-	local module_inv = ent.get_module_inventory()
-	if not module_inv then return false end
+	if ent.no_module then return end
+	local module_inv = ent.entity.get_module_inventory()
+	if not module_inv then
+		ent.no_module = true
+		return false
+	end
 	local contents = module_inv.get_contents()
 	if not contents or contents == {} then return false end
 	for _, v in pairs(contents) do
@@ -155,13 +168,13 @@ function can_upgrade_module(ent)
 end
 
 function check_quality_unlock(tech)
-	if not tech then return false end
 	return game.forces["player"].is_quality_unlocked(tech)
 end
 
 function upgrade_machines(ent)
 	if not ent.entity.quality.next then return end
 	local temp_name = ent.entity.name
+	local mirr = ent.entity.mirroring
 	local new_eneity = ent.entity.surface.create_entity {
 		name = ent.entity.name,
 		position = ent.entity.position,
@@ -173,9 +186,9 @@ function upgrade_machines(ent)
 	}
 	if new_eneity == nil then
 		game.print(temp_name .. ",this entity cant upgrade normal,try add it to block list")
-		storage.built_machine[ent.unit_number] = nil
-		return
+		return nil
 	end
+	new_eneity.mirroring = mirr
 	-- destroy leaving items
 	local bounding = new_eneity.bounding_box
 	local expand = 5
@@ -190,9 +203,7 @@ function upgrade_machines(ent)
 			v.destroy()
 		end
 	end
-
-	storage.built_machine[ent.unit_number] = nil
-	Add_storage(new_eneity)
+	return new_eneity
 end
 
 function upgrade_module(ent)
@@ -224,12 +235,11 @@ function span_c(content)
 end
 
 function get_built_machine()
-	storage.built_machine = storage.built_machine or {}
-
 	for _, surface in pairs(game.surfaces) do
 		local entities = surface.find_entities_filtered { force = "player" }
 		for _, v in pairs(entities) do
-			if flags_check(v) then
+			if storage.built_machine[v.unit_number] then break end
+			if flags_check(v) and blacklist_check(v) then
 				Add_storage(v)
 			end
 		end
@@ -254,9 +264,18 @@ function flags_check(ent)
 	return player_creation
 end
 
+function blacklist_check(ent)
+	for _, v in pairs(skipped_entities) do
+		if string.find(ent.name, v, 1, true) then
+			return false
+		end
+	end
+	return true
+end
+
 function On_built_entity(event)
 	if not event.entity then return end
-	if flags_check(event.entity) then
+	if flags_check(event.entity) and blacklist_check(event.entity)then
 		Add_storage(event.entity)
 	end
 end
@@ -264,7 +283,6 @@ end
 function Add_storage(v)
 	if storage.built_machine[v.unit_number] then return end
 	storage.built_machine[v.unit_number] = {
-		unit_number = v.unit_number,
 		entity = v,
 		level_time = 0
 	}

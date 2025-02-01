@@ -1,3 +1,4 @@
+local active_gui
 function On_select_changed(event)
 	if not active_gui then return end
 	if event.last_entity then
@@ -29,7 +30,7 @@ end
 function change_exp_gui(option)
 	for _, player in pairs(game.players) do
 		local existing_gui = player.gui.left["machine-exp"]
-		if option.value then
+		if option then
 			active_gui = true
 		else
 			if existing_gui then existing_gui.destroy() end
@@ -39,7 +40,7 @@ function change_exp_gui(option)
 end
 
 function initialize_gui()
-	gui_option = settings.global["show_exp_gui"]
+	gui_option = settings.global["show_exp_gui"].value
 	change_exp_gui(gui_option)
 end
 
