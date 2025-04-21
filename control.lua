@@ -1,4 +1,4 @@
-require("util")
+require "util"
 require "scripts.gui"
 require "scripts.skip_entities"
 
@@ -9,11 +9,12 @@ local respect_technology = settings.startup["respect_technology"].value
 local base_time = settings.global["base_time_to_level_up"].value
 local multiplier = settings.global["multiplier_time_to_level_up"].value
 local base_time_module = settings.global["time_to_randomly_levelup_inside_module"].value
-
+local to_max = settings.global["direct_to_max_quality"].value
 local first_search = true
 
 local processed_machine_index = nil -- Tracks the current position in the randomized list
 local max_per_tick = 30             -- Max items to process per tick
+
 script.on_init(function()
 
 end)
@@ -24,6 +25,7 @@ script.on_event(defines.events.on_runtime_mod_setting_changed, function()
 	base_time = settings.global["base_time_to_level_up"].value
 	multiplier = settings.global["multiplier_time_to_level_up"].value
 	base_time_modue = settings.global["time_to_randomly_levelup_inside_module"].value
+	to_max = settings.global["direct_to_max_quality"].value
 	change_exp_gui(settings.global["show_exp_gui"].value)
 end)
 
@@ -115,7 +117,18 @@ script.on_nth_tick(6, function()
 		storage.built_machine[v] = nil
 	end
 end)
-
+function get_max_quality()
+	local qualitys = prototypes.quality
+	local max = {0,0}
+	for _,v in pairs(qualitys) do
+		local temp = {v.level,v.name}
+		if(temp[1]>max[1]) then
+			max = temp
+		end
+	end
+	return max[2]
+end
+local max_quality = get_max_quality()
 function get_machine_check_list(count)
 	local list = {}
 	local res
@@ -175,11 +188,17 @@ function upgrade_machines(ent)
 	if not ent.entity.quality.next then return end
 	local temp_name = ent.entity.name
 	local mirr = ent.entity.mirroring
+	local qua
+	if to_max then
+		qua = max_quality
+	else
+		qua = ent.entity.quality.next
+	end
 	local new_eneity = ent.entity.surface.create_entity {
 		name = ent.entity.name,
 		position = ent.entity.position,
 		direction = ent.entity.direction,
-		quality = ent.entity.quality.next,
+		quality = qua,
 		force = ent.entity.force,
 		fast_replace = true,
 		raise_built = true
@@ -214,10 +233,16 @@ function upgrade_module(ent)
 	local content1 = span_c(content)
 	inv.clear()
 	local upgrade = true
+	local qua
+	if to_max then
+		qua = max_quality
+	else
+		qua = ent.entity.quality.next
+	end
 	for _, v in pairs(content1) do
 		if prototypes.quality[v.quality].next and upgrade then
 			upgrade = false
-			inv.insert { name = v.name, quality = prototypes.quality[v.quality].next.name, count = v.count }
+			inv.insert { name = v.name, quality = qua, count = v.count }
 		else
 			inv.insert { name = v.name, quality = v.quality, count = v.count }
 		end
@@ -275,7 +300,7 @@ end
 
 function On_built_entity(event)
 	if not event.entity then return end
-	if flags_check(event.entity) and blacklist_check(event.entity)then
+	if flags_check(event.entity) and blacklist_check(event.entity) then
 		Add_storage(event.entity)
 	end
 end
@@ -309,3 +334,10 @@ script.on_event(
 	defines.events.on_space_platform_built_entity,
 	On_built_entity
 )
+commands.add_command("uq-show-checklist-num", nil, function()
+	local num = 0
+	for _, _ in pairs(storage.built_machine) do
+		num = num + 1
+	end
+	game.print(num)
+end)

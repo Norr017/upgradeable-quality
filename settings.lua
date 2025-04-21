@@ -63,5 +63,11 @@ data:extend({
         name = "show_exp_gui",
         setting_type = "runtime-global",
         default_value = true
+    },
+    {
+        type = "bool-setting",
+        name = "direct_to_max_quality",
+        setting_type = "runtime-global",
+        default_value = false
     }
 })
